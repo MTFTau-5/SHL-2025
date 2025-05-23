@@ -15,28 +15,6 @@ import zhplot
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-class MultiHeadAttention(nn.Module):
-    def __init__(self, embed_dim, num_heads):
-        super().__init__()
-        self.embed_dim = embed_dim
-        self.num_heads = num_heads
-        self.head_dim = embed_dim // num_heads
-        
-        self.qkv = nn.Linear(embed_dim, 3 * embed_dim)
-        self.out = nn.Linear(embed_dim, embed_dim)
-        self.register_buffer('attention_weights', None)  
-        
-    def forward(self, x):
-        B, N, C = x.shape
-        qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, self.head_dim).permute(2, 0, 3, 1, 4)
-        q, k, v = qkv[0], qkv[1], qkv[2]
-        
-        attn = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(self.head_dim))
-        attn = attn.softmax(dim=-1)
-        
-        x = (attn @ v).transpose(1, 2).reshape(B, N, C)
-        self.attention_weights = attn.detach()  
-        return self.out(x)
 
 def plot_sensor_interaction(weights, epoch, save_dir="attention_maps"):
     os.makedirs(save_dir, exist_ok=True)
