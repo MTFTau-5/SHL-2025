@@ -12,6 +12,7 @@ import math
 from net import MultiModalCNNTransformer  
 from util import yaml_parser
 import zhplot
+from torch.optim.lr_scheduler import CosineAnnealingLR
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -19,7 +20,6 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 def plot_sensor_interaction(weights, epoch, save_dir="attention_maps"):
     os.makedirs(save_dir, exist_ok=True)
     
-    # 平均所有头和批次维度
     weights = weights.mean(dim=0).mean(dim=0).cpu().numpy()
     
     plt.figure(figsize=(10, 8))
@@ -53,11 +53,11 @@ def main():
         lr
     ) = yaml_parser()
 
-    train_data_path = '/home/mtftau-5/work3/SHL-2025/data/fft_data/train/data.npy'
-    train_label_path = '/home/mtftau-5/work3/SHL-2025/data/fft_data/train/label.npy'
-    test_data_path = '/home/mtftau-5/work3/SHL-2025/data/fft_data/test/data.npy'
-    valid_label_path = '/home/mtftau-5/work3/SHL-2025/data/fft_data/valid/label.npy'
-    valid_data_path = '/home/mtftau-5/work3/SHL-2025/data/fft_data/valid/data.npy'
+    train_data_path = '/home/mtftau-5/work3/SHL-2025 /data/data1/fft_data/train/data.npy'
+    train_label_path = '/home/mtftau-5/work3/SHL-2025 /data/data1/fft_data/train/label.npy'
+    test_data_path = '/home/mtftau-5/work3/SHL-2025 /data/data1/fft_data/test/data.npy'
+    valid_label_path = '/home/mtftau-5/work3/SHL-2025 /data/data1/fft_data/valid/label.npy'
+    valid_data_path = '/home/mtftau-5/work3/SHL-2025 /data/data1/fft_data/valid/data.npy'
 
     train_dataset = Feeder(train_data_path, train_label_path)
     test_dataset = Feeder(test_data_path) 
@@ -78,6 +78,7 @@ def main():
 
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=lr)
+    scheduler = CosineAnnealingLR(optimizer, T_max=50, eta_min=1e-5)
 
     best_valid_loss = float('inf')
     best_model_path = None
@@ -92,18 +93,18 @@ def main():
             inputs = inputs.to(device).float()
             labels = labels.to(device)
 
-            optimizer.zero_grad()
+            optimizer.zero_grad()    
             outputs = model(inputs)
             loss = criterion(outputs, labels)
             loss.backward()
-            optimizer.step()
+            optimizer.step()         
 
             train_loss += loss.item()
             _, predicted = outputs.max(1)
             train_total += labels.size(0)
             train_correct += predicted.eq(labels).sum().item()
 
-        # ========== 新增：获取并可视化注意力权重 ==========
+        scheduler.step() 
         model.eval()
         with torch.no_grad():
 
@@ -111,16 +112,16 @@ def main():
             sample_inputs = sample_inputs.to(device).float()
             _ = model(sample_inputs) 
 
-            if hasattr(model.transformer[-1].attn, 'attention_weights') and \
-               model.transformer[-1].attn.attention_weights is not None:
+            if hasattr(model.transformer.attn, 'attention_weights') and \
+               model.transformer.attn.attention_weights is not None:
                 plot_sensor_interaction(
-                    model.transformer[-1].attn.attention_weights,
+                    model.transformer.attn.attention_weights,
                     epoch+1
                 )
 
                 np.save(
                     f"attention_maps/raw_weights_epoch{epoch+1}.npy", 
-                    model.transformer[-1].attn.attention_weights.cpu().numpy()
+                    model.transformer.attn.attention_weights.cpu().numpy() 
                 )
 
         model.eval()
@@ -153,7 +154,7 @@ def main():
         if valid_loss < best_valid_loss:
             best_valid_loss = valid_loss
             timestamp = time.strftime("%Y%m%d-%H%M%S")
-            best_model_path = f'/home/mtftau-5/work3/SHL-2025/output/best_model_{timestamp}.pth'
+            best_model_path = f'/home/mtftau-5/work3/SHL-2025 /output/best_model_{timestamp}.pth'
             torch.save(model.state_dict(), best_model_path)
             print(f'Saved best model to {best_model_path}')
 

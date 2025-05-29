@@ -9,6 +9,6 @@ cnn_channels : 9
 num_classes : 9
 num_clusters : num_classes 
 update_interval : 5 
-num_epochs : 200
+num_epochs : 50000
 lr : 0.00001
 input_size: 1071

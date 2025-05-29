@@ -8,8 +8,8 @@ class Feeder(Dataset):
     def __init__(self, 
                  data_path: str, 
                  label_path: Optional[str] = None, 
-                 window_len: int = 64, 
-                 stride: int = 32, 
+                 window_len: int = 32, 
+                 stride: int = 16, 
                  modal_dropout: bool = True, 
                  drop_strategy: str = 'random') -> None:
         self.window_len = window_len

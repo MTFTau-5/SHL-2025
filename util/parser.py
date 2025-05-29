@@ -1,7 +1,7 @@
 import yaml
 
 
-def yaml_parser(config_path = '/home/mtftau-5/work3/SHL-2025/config/train.yaml'):
+def yaml_parser(config_path = '/home/mtftau-5/work3/SHL-2025 /config/train.yaml'):
     with open(config_path, 'r') as file:
         config = yaml.safe_load(file)
         train_data_path = config['train_data_path']

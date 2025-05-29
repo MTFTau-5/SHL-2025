@@ -1,1 +1,1 @@
-from .net import MultiModalCNNTransformer as MultiModalCNNTransformer
+from .net import SimplifiedMultiModalCNNTransformer as MultiModalCNNTransformer
