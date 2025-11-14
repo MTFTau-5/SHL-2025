@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import math
+import random
 
 class ModalProjector(nn.Module):
     def __init__(self, input_dim=1071, hidden_dim=256, dropout=0.2):
@@ -11,7 +12,7 @@ class ModalProjector(nn.Module):
             nn.LayerNorm(hidden_dim),
             nn.ReLU(),
             nn.Dropout(dropout)
-        )
+        )    
         
     def forward(self, x):
         return self.proj(x)
@@ -25,11 +26,10 @@ class SimplifiedTemporalCNN(nn.Module):
             nn.GELU(),
             nn.Dropout(dropout),
             nn.MaxPool1d(kernel_size=4),
-            nn.Conv1d(128, 256, kernel_size=1), 
+            nn.Conv1d(128, 256, kernel_size=1),
             nn.GELU(),
             nn.Dropout(dropout)
         )
-
     def forward(self, x):
         return self.conv_blocks(x)
 
@@ -39,14 +39,13 @@ class SimplifiedTransformerBlock(nn.Module):
         self.attn = nn.MultiheadAttention(embed_dim, num_heads, dropout=dropout)
         self.norm = nn.LayerNorm(embed_dim)
         self.dropout = nn.Dropout(dropout)
-        
+       
         # Simplified feed-forward
         self.ff = nn.Sequential(
             nn.Linear(embed_dim, embed_dim),
             nn.GELU(),
             nn.Dropout(dropout)
         )
-
     def forward(self, x):
         # Single attention + FF block
         attn_out, _ = self.attn(x, x, x)
@@ -56,11 +55,9 @@ class SimplifiedTransformerBlock(nn.Module):
         return x
 
 class SimplifiedMultiModalCNNTransformer(nn.Module):
-    def __init__(self, num_modes=4, num_classes=4, dropout=0.3):
+    def __init__(self, num_modes=4, num_classes=4, dropout=0.3, latent_dim=128):
         super().__init__()
         self.num_modes = num_modes
-
-        # Projectors and CNNs
         self.modal_projectors = nn.ModuleList([
             ModalProjector(dropout=dropout) for _ in range(num_modes)
         ])
@@ -68,28 +65,62 @@ class SimplifiedMultiModalCNNTransformer(nn.Module):
             SimplifiedTemporalCNN(dropout=dropout) for _ in range(num_modes)
         ])
         self.transformer = SimplifiedTransformerBlock(256, dropout=dropout)
-        
-        # Simplified classifier
         self.classifier = nn.Sequential(
             nn.Linear(256 * num_modes, num_classes),
             nn.Dropout(dropout)
         )
-        
-    def forward(self, x):
+        self.encoder_mu = nn.Linear(256, latent_dim)
+        self.encoder_logvar = nn.Linear(256, latent_dim)
+        self.decoder = nn.Sequential(
+            nn.Linear(latent_dim, 256),
+            nn.ReLU(),
+            nn.Linear(256, 256)
+        )
+       
+    def forward(self, x, is_training=False, mask_prob=0.5):
         batch_size = x.size(0)
-        modal_features = []
+        masked_idx = None
+        original_modal = None
+        recon = None
+        mu = None
+        logvar = None
         
+        if is_training and random.random() < mask_prob:
+            masked_idx = random.randint(0, self.num_modes - 1)
+            original_x = x[:, masked_idx].clone()
+            x[:, masked_idx] = torch.zeros_like(x[:, masked_idx])            
+            original_proj = self.modal_projectors[masked_idx](original_x)
+            original_cnn = self.temporal_cnns[masked_idx](original_proj.permute(0, 2, 1))
+            original_modal = original_cnn.mean(dim=-1)
+        
+        modal_features = []       
         # Process each modality
         for i in range(self.num_modes):
-            proj_feat = self.modal_projectors[i](x[:, i]) 
+            proj_feat = self.modal_projectors[i](x[:, i])
             cnn_feat = self.temporal_cnns[i](proj_feat.permute(0, 2, 1))
-            modal_feat = cnn_feat.mean(dim=-1)  # Global average pooling
+            modal_feat = cnn_feat.mean(dim=-1)
             modal_features.append(modal_feat)
-        
+       
         # Combine and transform
         combined = torch.stack(modal_features, dim=1)
         combined = self.transformer(combined)
-        
-        # Classify
+       
+        # VAE reconstruction if masked
+        if masked_idx is not None:
+            vae_input = combined[:, masked_idx, :]
+            mu = self.encoder_mu(vae_input)
+            logvar = self.encoder_logvar(vae_input)
+            z = self.reparameterize(mu, logvar)
+            recon = self.decoder(z)
         combined = combined.reshape(batch_size, -1)
-        return self.classifier(combined)
+        logits = self.classifier(combined)
+        
+        if masked_idx is not None:
+            return logits, recon, mu, logvar, original_modal
+        else:
+            return logits
+    
+    def reparameterize(self, mu, logvar):
+        std = torch.exp(0.5 * logvar)
+        eps = torch.randn_like(std)
+        return mu + eps * std
