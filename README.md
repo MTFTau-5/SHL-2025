@@ -117,7 +117,7 @@ valid_label_path: /path/to/fft_data/valid/label.npy
 # 训练参数
 batch_size: 2048
 epochs: 10
-num_epochs: 50000
+num_epochs: 500
 lr: 0.001
 
 # 模型参数
